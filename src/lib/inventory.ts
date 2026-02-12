@@ -34,7 +34,7 @@ export interface TechnicianSkill {
 export interface DesignTemplate {
   id: string
   name: string
-  category: 'french' | 'ombre' | 'geometric' | 'floral' | 'abstract' | 'seasonal'
+  category: 'french' | 'ombre' | 'geometric' | 'floral' | 'abstract' | 'seasonal' | 'ankara' | 'tribal'
   difficulty: 'basic' | 'intermediate' | 'advanced'
   description: string
   requiredColors: string[]

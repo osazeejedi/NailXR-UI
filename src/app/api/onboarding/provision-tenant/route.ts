@@ -137,15 +137,40 @@ export async function POST(request: NextRequest) {
         virtualTryOn: true,
         savedLooks: true,
         salonBooking: true,
+        homeVisits: formData.selectedTier !== 'starter',
         analytics: formData.selectedTier !== 'starter',
         customDomain: false
+      },
+      whatsapp: {
+        enabled: !!formData.whatsappPhone,
+        phoneNumber: formData.whatsappPhone || '',
+        chatLinkMessage: `Hi! I found you on NailXR and I'd like to book an appointment.`,
+        bookingConfirmations: true,
+        appointmentReminders: true
+      },
+      serviceType: formData.serviceType || 'both',
+      location: {
+        state: formData.state || 'Lagos',
+        area: formData.area || '',
+        address: formData.address || '',
+        landmark: formData.landmark || '',
+        homeVisitAreas: formData.homeVisitAreas || [],
+        homeVisitFee: formData.homeVisitFee || 0
       },
       pricing: getPricingForTier(formData.selectedTier),
       settings: {
         allowCustomColors: formData.selectedTier !== 'starter',
         maxSavedLooks: getMaxSavedLooks(formData.selectedTier),
         enableNotifications: true,
-        timezone: 'UTC'
+        timezone: 'Africa/Lagos',
+        currency: 'NGN',
+        locale: 'en-NG'
+      },
+      social: {
+        instagram: formData.instagram || undefined,
+        facebook: formData.facebook || undefined,
+        tiktok: formData.tiktok || undefined,
+        twitter: formData.twitter || undefined
       },
       isActive: true
     }

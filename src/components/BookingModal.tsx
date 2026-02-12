@@ -157,7 +157,7 @@ const generateTimeSlots = (date: Date): TimeSlot[] => {
   
   // Generate slots from 9 AM to 6 PM
   for (let hour = 9; hour <= 18; hour++) {
-    for (let minute of [0, 30]) {
+    for (const minute of [0, 30]) {
       if (hour === 18 && minute === 30) break
       
       const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`

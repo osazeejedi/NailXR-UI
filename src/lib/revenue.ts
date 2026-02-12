@@ -11,6 +11,8 @@ export interface Booking {
   appointmentDate: Date
   createdAt: Date
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no-show'
+  homeVisitFee?: number
+  visitType?: 'salon' | 'home'
   paymentStatus: 'pending' | 'paid' | 'refunded'
   notes?: string
 }
@@ -151,6 +153,9 @@ export class RevenueTracker {
     const commissionRate = salon.commissionRate
     const commissionAmount = Math.round((booking.serviceAmount * commissionRate / 100) * 100) / 100
 
+    const homeVisitFee = booking.homeVisitFee || 0
+    const totalAmount = booking.serviceAmount + homeVisitFee
+
     const transaction: RevenueTransaction = {
       id: `txn-${booking.id}`,
       tenantId: booking.tenantId,
@@ -158,6 +163,8 @@ export class RevenueTracker {
       salonId: booking.salonId,
       clientId: booking.clientId,
       serviceAmount: booking.serviceAmount,
+      homeVisitFee,
+      totalAmount,
       commissionRate,
       commissionAmount,
       transactionDate: new Date(),
@@ -190,12 +197,19 @@ export class RevenueTracker {
       ? transactions.reduce((sum, t) => sum + t.commissionRate, 0) / totalBookings 
       : 0
 
+    const salonVisits = transactions.filter(t => !t.homeVisitFee || t.homeVisitFee === 0).length
+    const homeVisits = transactions.filter(t => t.homeVisitFee && t.homeVisitFee > 0).length
+    const totalHomeVisitFees = transactions.reduce((sum, t) => sum + (t.homeVisitFee || 0), 0)
+
     return {
       tenantId,
       period: period || new Date().toISOString().substring(0, 7),
       totalBookings,
+      salonVisits,
+      homeVisits,
       totalRevenue,
       totalCommission,
+      totalHomeVisitFees,
       averageCommissionRate,
       transactions
     }

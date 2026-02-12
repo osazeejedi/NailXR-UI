@@ -68,16 +68,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const createOrUpdateProfile = async (user: User) => {
     try {
       // Check if profile exists
-      const { data: existingProfile } = await supabase
-        .from('profiles')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: existingProfile } = await (supabase
+        .from('profiles') as any)
         .select('id')
         .eq('id', user.id)
         .single()
 
       if (!existingProfile) {
         // Create new profile
-        const { error } = await supabase
-          .from('profiles')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await (supabase
+          .from('profiles') as any)
           .insert({
             id: user.id,
             email: user.email!,
@@ -128,8 +130,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const updateProfile = async (updates: { name?: string; avatar_url?: string }) => {
     if (!user) return { error: 'No user logged in' }
 
-    const { error } = await supabase
-      .from('profiles')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase
+      .from('profiles') as any)
       .update({
         ...updates,
         updated_at: new Date().toISOString()
