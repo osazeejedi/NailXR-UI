@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   X, MapPin, Star, Clock, Calendar, ChevronLeft, ChevronRight,
-  Phone, Globe, Navigation, Filter, Search, Check, Heart
+  Phone, Globe, Navigation, Filter, Search, Check, Heart,
+  Home, MessageCircle, Building2
 } from 'lucide-react'
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isToday, addWeeks, subWeeks } from 'date-fns'
 
@@ -12,15 +13,22 @@ interface Salon {
   id: string
   name: string
   address: string
-  city: string
+  area: string
+  state: string
+  landmark?: string
   distance: number
   rating: number
   reviewCount: number
-  priceRange: '€' | '€€' | '€€€' | '€€€€'
+  priceRange: '₦' | '₦₦' | '₦₦₦' | '₦₦₦₦'
   phone: string
+  whatsappPhone?: string
+  instagram?: string
   website?: string
   image: string
   services: string[]
+  serviceType: 'salon_only' | 'home_only' | 'both'
+  homeVisitFee: number
+  homeVisitAreas: string[]
   openingHours: {
     [key: string]: { open: string; close: string } | null
   }
@@ -50,17 +58,23 @@ interface BookingModalProps {
 const mockSalons: Salon[] = [
   {
     id: '1',
-    name: 'Luxe Nail Studio',
-    address: '123 Fashion Street',
-    city: 'New York, NY',
+    name: 'Luxe Nails Lagos',
+    address: '12 Admiralty Way, Lekki Phase 1',
+    area: 'Lekki',
+    state: 'Lagos',
+    landmark: 'Beside Mega Chicken',
     distance: 0.5,
     rating: 4.9,
     reviewCount: 156,
-    priceRange: '€€€',
-    phone: '+1 (555) 123-4567',
-    website: 'luxenailstudio.com',
+    priceRange: '₦₦₦',
+    phone: '+234 812 345 6789',
+    whatsappPhone: '+2348123456789',
+    instagram: '@luxenailslagos',
     image: '/api/placeholder/300/200',
-    services: ['Classic Manicure', 'Gel Polish', 'Nail Art', 'French Manicure'],
+    services: ['Classic Manicure', 'Gel Polish', 'Nail Art', 'French Tips', 'Acrylic Extensions'],
+    serviceType: 'both',
+    homeVisitFee: 5000,
+    homeVisitAreas: ['Lekki', 'Victoria Island', 'Ikoyi', 'Ajah'],
     openingHours: {
       monday: { open: '09:00', close: '19:00' },
       tuesday: { open: '09:00', close: '19:00' },
@@ -75,16 +89,22 @@ const mockSalons: Salon[] = [
   },
   {
     id: '2',
-    name: 'Bloom Beauty Bar',
-    address: '456 Madison Ave',
-    city: 'New York, NY',
+    name: 'Glam Fingers',
+    address: 'Mobile Service',
+    area: 'Wuse',
+    state: 'FCT (Abuja)',
     distance: 1.2,
     rating: 4.7,
     reviewCount: 89,
-    priceRange: '€€',
-    phone: '+1 (555) 987-6543',
+    priceRange: '₦₦',
+    phone: '+234 903 456 7890',
+    whatsappPhone: '+2349034567890',
+    instagram: '@glamfingers_abj',
     image: '/api/placeholder/300/200',
-    services: ['Manicure', 'Pedicure', 'Nail Extensions', 'Nail Art'],
+    services: ['Gel Polish', 'Nail Art', 'Pedicure', 'Press-On Nails'],
+    serviceType: 'home_only',
+    homeVisitFee: 3000,
+    homeVisitAreas: ['Wuse', 'Maitama', 'Gwarinpa', 'Jabi', 'Utako', 'Life Camp'],
     openingHours: {
       monday: { open: '10:00', close: '18:00' },
       tuesday: { open: '10:00', close: '18:00' },
@@ -94,22 +114,29 @@ const mockSalons: Salon[] = [
       saturday: { open: '09:00', close: '17:00' },
       sunday: null
     },
-    specialties: ['Eco-friendly products', 'Quick service'],
+    specialties: ['Home service', 'Quick turnaround'],
     verified: true
   },
   {
     id: '3',
-    name: 'Artistic Nails',
-    address: '789 Broadway',
-    city: 'New York, NY',
+    name: 'The Nail Bar PH',
+    address: '5 Tombia Street, GRA Phase 2',
+    area: 'GRA Phase 2',
+    state: 'Rivers',
+    landmark: 'Off Peter Odili Road',
     distance: 2.1,
     rating: 4.8,
     reviewCount: 234,
-    priceRange: '€€€€',
-    phone: '+1 (555) 456-7890',
-    website: 'artisticnails.com',
+    priceRange: '₦₦₦₦',
+    phone: '+234 706 789 0123',
+    whatsappPhone: '+2347067890123',
+    instagram: '@thenailbarph',
+    website: 'nailbarph.com',
     image: '/api/placeholder/300/200',
-    services: ['Premium Manicure', 'Gel Extensions', 'Hand Art', 'Luxury Treatments'],
+    services: ['Premium Manicure', 'Gel Extensions', 'Nail Art', 'Spa Pedicure'],
+    serviceType: 'both',
+    homeVisitFee: 4000,
+    homeVisitAreas: ['GRA Phase 1', 'GRA Phase 2', 'Trans Amadi', 'Rumuola'],
     openingHours: {
       monday: { open: '09:00', close: '20:00' },
       tuesday: { open: '09:00', close: '20:00' },
@@ -119,7 +146,7 @@ const mockSalons: Salon[] = [
       saturday: { open: '08:00', close: '19:00' },
       sunday: { open: '10:00', close: '18:00' }
     },
-    specialties: ['Celebrity clients', 'Award-winning designs'],
+    specialties: ['Premium nail art', 'Bridal packages'],
     verified: true
   }
 ]
@@ -137,8 +164,8 @@ const generateTimeSlots = (date: Date): TimeSlot[] => {
       slots.push({
         time,
         available: Math.random() > 0.3, // 70% availability
-        price: 45 + Math.floor(Math.random() * 30),
-        technician: ['Sarah', 'Emma', 'Maria', 'Lisa'][Math.floor(Math.random() * 4)]
+        price: 5000 + Math.floor(Math.random() * 10000),
+        technician: ['Amara', 'Chidinma', 'Funke', 'Blessing'][Math.floor(Math.random() * 4)]
       })
     }
   }
@@ -292,7 +319,7 @@ export default function BookingModal({ isOpen, onClose, selectedLook }: BookingM
                     {/* Sort */}
                     <select
                       value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as any)}
+                      onChange={(e) => setSortBy(e.target.value as 'distance' | 'rating' | 'price')}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                     >
                       <option value="distance">Sort by Distance</option>
@@ -314,7 +341,7 @@ export default function BookingModal({ isOpen, onClose, selectedLook }: BookingM
                         <div>
                           <h4 className="font-medium text-gray-900 mb-2">Price Range</h4>
                           <div className="space-y-2">
-                            {['€', '€€', '€€€', '€€€€'].map(range => (
+                            {['₦', '₦₦', '₦₦₦', '₦₦₦₦'].map(range => (
                               <label key={range} className="flex items-center">
                                 <input
                                   type="checkbox"
@@ -517,7 +544,7 @@ export default function BookingModal({ isOpen, onClose, selectedLook }: BookingM
                               <div>{slot.time}</div>
                               {slot.available && (
                                 <div className="text-xs opacity-75">
-                                  €{slot.price} • {slot.technician}
+                                  ₦{slot.price.toLocaleString()} • {slot.technician}
                                 </div>
                               )}
                             </motion.button>
@@ -557,7 +584,7 @@ export default function BookingModal({ isOpen, onClose, selectedLook }: BookingM
                         <div className="border-t border-gray-200 pt-3">
                           <div className="flex justify-between">
                             <span className="font-semibold">Total:</span>
-                            <span className="font-semibold text-lg">€{selectedTime.price}</span>
+                            <span className="font-semibold text-lg">₦{selectedTime.price.toLocaleString()}</span>
                           </div>
                         </div>
                       </div>
@@ -575,7 +602,7 @@ export default function BookingModal({ isOpen, onClose, selectedLook }: BookingM
                   </div>
                   <h3 className="text-2xl font-bold text-gray-900 mb-4">Booking Confirmed!</h3>
                   <p className="text-gray-600 mb-6">
-                    Your appointment has been successfully booked. You'll receive a confirmation email shortly.
+                    Your appointment has been successfully booked. You&apos;ll receive a confirmation email shortly.
                   </p>
                   
                   <div className="bg-gray-50 rounded-xl p-6 mb-6 text-left">

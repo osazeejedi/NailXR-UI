@@ -1,152 +1,92 @@
 'use client'
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   ArrowLeft, Save, Share2, Download, Palette, Sparkles, 
-  RotateCcw, Zap, Heart, ShoppingBag, Settings, Eye, EyeOff, Camera
+  RotateCcw, Zap, Heart, ShoppingBag, Settings, Camera,
+  Image as ImageIcon, Grid3x3, Upload, X
 } from 'lucide-react'
 import Link from 'next/link'
-import { SalonInventoryManager } from '@/lib/inventory'
+import { SalonInventoryManager, type DesignTemplate } from '@/lib/inventory'
+import { useTheme, useTenantStyle } from '@/components/ThemeProvider'
+import { usePerformanceMonitor } from '@/lib/performance'
+import BookingModal from '@/components/BookingModal'
+import type { HandLandmark } from '@/ai/nail-detection/NailDetector'
 
-// Dynamically import HandModel to avoid SSR issues
-const HandModel = dynamic(() => import('@/components/3d/HandModel'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full bg-gradient-to-br from-pink-50 to-purple-50 rounded-lg animate-pulse flex items-center justify-center">
-      <div className="text-gray-400">Loading 3D Model...</div>
-    </div>
-  )
-})
+// Dynamically import components
+const HandModel = dynamic(() => import('@/components/3d/HandModel'), { ssr: false })
+const ARCamera = dynamic(() => import('@/components/ar/ARCamera'), { ssr: false })
+const ARSegmentationOverlay = dynamic(() => import('@/components/ar/ARSegmentationOverlay'), { ssr: false })
+const ARPhotoMode = dynamic(() => import('@/components/ar/ARPhotoMode'), { ssr: false })
+const ARMultiPreview = dynamic(() => import('@/components/ar/ARMultiPreview'), { ssr: false })
+const ARDesignUploader = dynamic(() => import('@/components/ar/ARDesignUploader'), { ssr: false })
 
-// Dynamically import AR components
-const ARCamera = dynamic(() => import('@/components/ar/ARCamera'), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-full bg-black rounded-lg animate-pulse flex items-center justify-center">
-      <div className="text-white">Loading AR Camera...</div>
-    </div>
-  )
-})
-
-const ARNailOverlay = dynamic(() => import('@/components/ar/ARNailOverlay'), {
-  ssr: false
-})
-
-interface NailDesign {
-  id: string
-  name: string
-  category: string
-  colors: string[]
-  price: number
-  duration: number
-  image: string
-  description: string
-  featured: boolean
-}
-
-const nailDesigns: NailDesign[] = [
-  {
-    id: '1',
-    name: 'Classic French',
-    category: 'elegant',
-    colors: ['#FFFFFF', '#FFC0CB'],
-    price: 45,
-    duration: 60,
-    image: '/api/placeholder/150/150',
-    description: 'Timeless French manicure with a modern twist',
-    featured: true
-  },
-  {
-    id: '2',
-    name: 'Rose Gold Glam',
-    category: 'glamorous',
-    colors: ['#E8B4B8', '#FFD700'],
-    price: 65,
-    duration: 90,
-    image: '/api/placeholder/150/150',
-    description: 'Luxurious rose gold with glitter accents',
-    featured: true
-  },
-  {
-    id: '3',
-    name: 'Ocean Gradient',
-    category: 'modern',
-    colors: ['#4ECDC4', '#45B7D1', '#96CEB4'],
-    price: 55,
-    duration: 75,
-    image: '/api/placeholder/150/150',
-    description: 'Beautiful ocean-inspired gradient design',
-    featured: false
-  },
-  {
-    id: '4',
-    name: 'Matte Black',
-    category: 'sophisticated',
-    colors: ['#000000'],
-    price: 40,
-    duration: 45,
-    image: '/api/placeholder/150/150',
-    description: 'Bold and sophisticated matte finish',
-    featured: false
-  },
-  {
-    id: '5',
-    name: 'Holographic Dreams',
-    category: 'futuristic',
-    colors: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFEAA7'],
-    price: 75,
-    duration: 120,
-    image: '/api/placeholder/150/150',
-    description: 'Stunning holographic effect with rainbow shimmer',
-    featured: true
-  },
-  {
-    id: '6',
-    name: 'Minimalist Nude',
-    category: 'natural',
-    colors: ['#F5DEB3', '#E6C2A6'],
-    price: 35,
-    duration: 40,
-    image: '/api/placeholder/150/150',
-    description: 'Natural and elegant nude tones',
-    featured: false
-  }
-]
-
-const categories = [
-  { id: 'all', name: 'All Designs', icon: '✨' },
-  { id: 'elegant', name: 'Elegant', icon: '💎' },
-  { id: 'glamorous', name: 'Glamorous', icon: '✨' },
-  { id: 'modern', name: 'Modern', icon: '🎨' },
-  { id: 'sophisticated', name: 'Sophisticated', icon: '🖤' },
-  { id: 'futuristic', name: 'Futuristic', icon: '🌈' },
-  { id: 'natural', name: 'Natural', icon: '🌿' }
-]
-
-const customColors = [
-  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
-  '#DDA0DD', '#F0A0A0', '#FFB347', '#87CEEB', '#98FB98',
-  '#FFB6C1', '#20B2AA', '#87CEFA', '#98FB98', '#F0E68C',
-  '#DDA0DD', '#F4A460', '#FF7F50', '#6495ED', '#90EE90'
-]
+type ViewMode = '3d' | 'camera' | 'photo' | 'multi' | 'upload'
 
 export default function TryOnPage() {
-  const [selectedDesign, setSelectedDesign] = useState<NailDesign>(nailDesigns[0])
-  const [selectedCategory, setSelectedCategory] = useState('all')
-  const [customColor, setCustomColor] = useState('#FF6B6B')
+  // View mode state
+  const [viewMode, setViewMode] = useState<ViewMode>('camera')
   const [handSide, setHandSide] = useState<'left' | 'right'>('right')
+  
+  // Design state
+  const [designs, setDesigns] = useState<DesignTemplate[]>([])
+  const [selectedDesign, setSelectedDesign] = useState<DesignTemplate | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [customColor, setCustomColor] = useState('#FF6B9D')
   const [isCustomMode, setIsCustomMode] = useState(false)
+  
+  // UI state
   const [showSettings, setShowSettings] = useState(false)
   const [favorites, setFavorites] = useState<string[]>([])
-  const [isARMode, setIsARMode] = useState(false)
-  const [selectedSalon] = useState('salon-1') // Default salon for demo
-  const [arHandResults, setArHandResults] = useState<any>(null)
+  const [bookingModalOpen, setBookingModalOpen] = useState(false)
+  const [selectedBookingLook, setSelectedBookingLook] = useState<any>(null)
+  
+  // AR state
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
+  const [handLandmarks, setHandLandmarks] = useState<HandLandmark[] | null>(null)
+  const [salonId] = useState('default-salon')
+  
+  // Refs
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  
+  // Hooks
+  const { tenant } = useTheme()
+  const { getStyle } = useTenantStyle()
+  const { metrics, reset: resetPerformance } = usePerformanceMonitor(viewMode === 'camera')
+
+  // Load designs from inventory
+  useEffect(() => {
+    const loadDesigns = async () => {
+      try {
+        const available = await SalonInventoryManager.getAvailableDesigns(salonId)
+        setDesigns(available)
+        
+        if (available.length > 0 && !selectedDesign) {
+          setSelectedDesign(available[0])
+        }
+      } catch (error) {
+        console.error('Failed to load designs:', error)
+      }
+    }
+    
+    loadDesigns()
+  }, [salonId, selectedDesign])
 
   const filteredDesigns = selectedCategory === 'all' 
-    ? nailDesigns 
-    : nailDesigns.filter(design => design.category === selectedCategory)
+    ? designs 
+    : designs.filter(design => design.category === selectedCategory)
+
+  const categories = [
+    { id: 'all', name: 'All Designs', icon: '✨' },
+    { id: 'french', name: 'French', icon: '💅' },
+    { id: 'ombre', name: 'Ombré', icon: '🌈' },
+    { id: 'geometric', name: 'Geometric', icon: '🔷' },
+    { id: 'floral', name: 'Floral', icon: '🌸' },
+    { id: 'abstract', name: 'Abstract', icon: '🎨' },
+    { id: 'seasonal', name: 'Seasonal', icon: '🍂' }
+  ]
 
   const toggleFavorite = useCallback((designId: string) => {
     setFavorites(prev => 
@@ -156,12 +96,29 @@ export default function TryOnPage() {
     )
   }, [])
 
-  const handleSaveDesign = useCallback(() => {
-    // Implementation for saving design
-    console.log('Saving design:', selectedDesign)
-  }, [selectedDesign])
+  const handleBookAppointment = useCallback(() => {
+    if (!selectedDesign) return
+    
+    setSelectedBookingLook({
+      name: selectedDesign.name,
+      nailColor: isCustomMode ? customColor : selectedDesign.requiredColors[0],
+      nailStyle: selectedDesign.category,
+      estimatedPrice: selectedDesign.basePrice,
+      estimatedDuration: selectedDesign.estimatedTime
+    })
+    setBookingModalOpen(true)
+  }, [selectedDesign, isCustomMode, customColor])
 
-  const currentNailColor = isCustomMode ? customColor : selectedDesign.colors[0]
+  const currentNailColor = isCustomMode ? customColor : (selectedDesign?.requiredColors[0] || '#FF6B9D')
+  const mapCategoryToPattern = (category: string): 'solid' | 'gradient' | 'french' | 'ombre' | 'glitter' => {
+    switch (category) {
+      case 'french': return 'french'
+      case 'ombre': return 'ombre'
+      case 'geometric': return 'gradient'
+      case 'floral': return 'glitter'
+      default: return 'solid'
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -176,8 +133,8 @@ export default function TryOnPage() {
             </Link>
             <div className="flex items-center gap-4">
               <img 
-                src="/NailXR-symbol.png" 
-                alt="NailXR" 
+                src={tenant.branding.logo} 
+                alt={tenant.content.companyName}
                 className="h-6 w-6"
               />
               <button
@@ -189,7 +146,7 @@ export default function TryOnPage() {
             </div>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Virtual Try-On</h1>
-          <p className="text-gray-600 text-sm">Choose your perfect nail design</p>
+          <p className="text-gray-600 text-sm">{tenant.content.tagline}</p>
         </div>
 
         {/* Mode Toggle */}
@@ -255,7 +212,7 @@ export default function TryOnPage() {
                       whileTap={{ scale: 0.98 }}
                       onClick={() => setSelectedDesign(design)}
                       className={`relative cursor-pointer rounded-lg border-2 transition-colors overflow-hidden ${
-                        selectedDesign.id === design.id
+                        selectedDesign?.id === design.id
                           ? 'border-pink-500 bg-pink-50'
                           : 'border-gray-200 bg-white hover:border-gray-300'
                       }`}
@@ -263,14 +220,14 @@ export default function TryOnPage() {
                       <div className="aspect-square bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center">
                         <div 
                           className="w-16 h-16 rounded-full"
-                          style={{ backgroundColor: design.colors[0] }}
+                          style={{ backgroundColor: design.requiredColors[0] || '#FF6B9D' }}
                         />
                       </div>
                       <div className="p-3">
                         <h4 className="font-semibold text-sm text-gray-900 mb-1">{design.name}</h4>
-                        <p className="text-xs text-gray-600 mb-2">${design.price}</p>
+                        <p className="text-xs text-gray-600 mb-2">${design.basePrice}</p>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-gray-500">{design.duration}min</span>
+                          <span className="text-xs text-gray-500">{design.estimatedTime}min</span>
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
@@ -288,11 +245,6 @@ export default function TryOnPage() {
                           </button>
                         </div>
                       </div>
-                      {design.featured && (
-                        <div className="absolute top-2 left-2 bg-yellow-400 text-yellow-900 text-xs px-2 py-1 rounded-full font-medium">
-                          Popular
-                        </div>
-                      )}
                     </motion.div>
                   ))}
                 </div>
@@ -301,37 +253,14 @@ export default function TryOnPage() {
           ) : (
             /* Custom Color Mode */
             <div className="p-4">
-              <h3 className="font-semibold text-gray-900 mb-4">Custom Colors</h3>
-              <div className="grid grid-cols-4 gap-3 mb-6">
-                {customColors.map((color) => (
-                  <motion.button
-                    key={color}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setCustomColor(color)}
-                    className={`w-full aspect-square rounded-lg border-4 transition-colors ${
-                      customColor === color ? 'border-gray-900' : 'border-gray-200'
-                    }`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-
-              {/* Color Picker */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Custom Color
-                </label>
-                <input
-                  type="color"
-                  value={customColor}
-                  onChange={(e) => setCustomColor(e.target.value)}
-                  className="w-full h-12 rounded-lg border border-gray-300 cursor-pointer"
-                />
-              </div>
-
-              {/* Color Info */}
-              <div className="bg-gray-50 rounded-lg p-4">
+              <h3 className="font-semibold text-gray-900 mb-4">Custom Color</h3>
+              <input
+                type="color"
+                value={customColor}
+                onChange={(e) => setCustomColor(e.target.value)}
+                className="w-full h-32 rounded-lg border border-gray-300 cursor-pointer"
+              />
+              <div className="mt-4 bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-2">Selected Color</h4>
                 <div className="flex items-center gap-3">
                   <div 
@@ -350,77 +279,93 @@ export default function TryOnPage() {
           <motion.button
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            onClick={handleSaveDesign}
-            className="w-full bg-gradient-to-r from-pink-500 to-purple-600 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
+            onClick={handleBookAppointment}
+            disabled={!selectedDesign}
+            style={getStyle('gradient')}
+            className="w-full text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            <Save className="h-5 w-5" />
-            Save This Look
+            <ShoppingBag className="h-5 w-5" />
+            Book Appointment
           </motion.button>
-          
-          <div className="flex gap-2">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-50"
-            >
-              <Share2 className="h-4 w-4" />
-              Share
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="flex-1 border border-gray-300 text-gray-700 py-3 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-50"
-            >
-              <Download className="h-4 w-4" />
-              Export
-            </motion.button>
-          </div>
         </div>
       </div>
 
-      {/* Right Side - 3D Visualization */}
+      {/* Right Side - AR Visualization */}
       <div className="flex-1 flex flex-col">
         {/* Top Bar */}
         <div className="bg-white shadow-sm border-b border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
-                {isCustomMode ? 'Custom Design' : selectedDesign.name}
+                {isCustomMode ? 'Custom Design' : selectedDesign?.name || 'Select a Design'}
               </h2>
               <p className="text-gray-600">
-                {isCustomMode ? `Color: ${customColor}` : selectedDesign.description}
+                {isCustomMode ? `Color: ${customColor}` : selectedDesign?.description || 'Choose from our collection'}
               </p>
             </div>
             
-            <div className="flex items-center gap-4">
-              {/* AR Mode Toggle */}
+            <div className="flex items-center gap-2">
+              {/* View Mode Toggle */}
               <div className="flex bg-gray-100 rounded-lg p-1">
                 <button
-                  onClick={() => setIsARMode(false)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    !isARMode 
+                  onClick={() => setViewMode('3d')}
+                  className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                    viewMode === '3d' 
                       ? 'bg-white text-gray-900 shadow-sm' 
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
+                  title="3D Model"
                 >
-                  <Sparkles className="h-4 w-4 inline mr-2" />
-                  3D Model
+                  <Sparkles className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => setIsARMode(true)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    isARMode 
+                  onClick={() => setViewMode('camera')}
+                  className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                    viewMode === 'camera' 
                       ? 'bg-white text-gray-900 shadow-sm' 
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
+                  title="Live AR"
                 >
-                  <Camera className="h-4 w-4 inline mr-2" />
-                  AR Try-On
+                  <Camera className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('photo')}
+                  className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                    viewMode === 'photo' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Photo Upload"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('multi')}
+                  className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                    viewMode === 'multi' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Compare"
+                >
+                  <Grid3x3 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('upload')}
+                  className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                    viewMode === 'upload' 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  title="Upload Design"
+                >
+                  <Upload className="h-4 w-4" />
                 </button>
               </div>
 
               {/* Hand Side Toggle (only for 3D mode) */}
-              {!isARMode && (
+              {viewMode === '3d' && (
                 <div className="flex bg-gray-100 rounded-lg p-1">
                   <button
                     onClick={() => setHandSide('left')}
@@ -430,7 +375,7 @@ export default function TryOnPage() {
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    Left Hand
+                    Left
                   </button>
                   <button
                     onClick={() => setHandSide('right')}
@@ -440,20 +385,10 @@ export default function TryOnPage() {
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    Right Hand
+                    Right
                   </button>
                 </div>
               )}
-
-              {/* Book Appointment Button */}
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="bg-gradient-to-r from-pink-500 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold flex items-center gap-2"
-              >
-                <ShoppingBag className="h-5 w-5" />
-                Book Appointment
-              </motion.button>
             </div>
           </div>
         </div>
@@ -461,65 +396,129 @@ export default function TryOnPage() {
         {/* Visualization Container */}
         <div className="flex-1 p-8">
           <div className="h-full bg-white rounded-2xl shadow-lg overflow-hidden relative">
-            {isARMode ? (
-              <ARCamera
-                isActive={isARMode}
-                onHandsDetected={setArHandResults}
-                onCameraReady={() => console.log('AR Camera ready')}
-                onCameraError={(error) => console.error('AR Camera error:', error)}
-                overlayComponent={(props) => (
-                  <ARNailOverlay
-                    {...props}
-                    salonId={selectedSalon}
-                    selectedDesignId={selectedDesign.id}
-                    onDesignChange={(designId) => {
-                      const design = nailDesigns.find(d => d.id === designId)
-                      if (design) setSelectedDesign(design)
-                    }}
-                    onAddToCart={(designId) => {
-                      console.log('Add to cart:', designId)
-                      // Implement booking functionality
-                    }}
-                    onSaveToFavorites={(designId) => {
-                      toggleFavorite(designId)
-                    }}
-                  />
-                )}
-                className="w-full h-full"
-              />
-            ) : (
+            {viewMode === '3d' && (
               <HandModel 
                 nailColor={currentNailColor}
-                nailStyle={isCustomMode ? 'custom' : selectedDesign.name}
+                nailStyle={isCustomMode ? 'custom' : selectedDesign?.name || 'default'}
                 handSide={handSide}
                 interactive={true}
               />
+            )}
+
+            {viewMode === 'camera' && (
+              <>
+                <ARCamera
+                  isActive={true}
+                  onHandsDetected={(results) => {
+                    setHandLandmarks(results.multiHandLandmarks?.[0] || null)
+                    if (!videoRef.current && results.image) {
+                      // Extract video element from MediaPipe results if available
+                      const video = document.querySelector('video')
+                      if (video) {
+                        videoRef.current = video as HTMLVideoElement
+                        setVideoElement(video as HTMLVideoElement)
+                      }
+                    }
+                  }}
+                  onCameraReady={() => {
+                    const video = document.querySelector('video')
+                    if (video) {
+                      videoRef.current = video as HTMLVideoElement
+                      setVideoElement(video as HTMLVideoElement)
+                    }
+                  }}
+                  className="w-full h-full"
+                />
+                
+                {videoElement && (
+                  <ARSegmentationOverlay
+                    videoElement={videoElement}
+                    handLandmarks={handLandmarks}
+                    initialColor={currentNailColor}
+                    initialPattern={selectedDesign ? mapCategoryToPattern(selectedDesign.category) : 'solid'}
+                    showDebugInfo={showSettings}
+                  />
+                )}
+              </>
+            )}
+
+            {viewMode === 'photo' && (
+              <ARPhotoMode
+                initialColor={currentNailColor}
+                initialPattern={selectedDesign ? mapCategoryToPattern(selectedDesign.category) : 'solid'}
+              />
+            )}
+
+            {viewMode === 'multi' && (
+              <ARMultiPreview
+                videoElement={videoElement}
+                handLandmarks={handLandmarks}
+                designs={designs.slice(0, 4)}
+                onSelectDesign={(designId) => {
+                  const design = designs.find(d => d.id === designId)
+                  if (design) setSelectedDesign(design)
+                }}
+                onBookDesign={(designId) => {
+                  const design = designs.find(d => d.id === designId)
+                  if (design) {
+                    setSelectedDesign(design)
+                    handleBookAppointment()
+                  }
+                }}
+                onFavoriteDesign={toggleFavorite}
+                favorites={favorites}
+              />
+            )}
+
+            {viewMode === 'upload' && (
+              <ARDesignUploader
+                onDesignSelected={(design) => {
+                  console.log('Custom design selected:', design)
+                  // In future, apply custom texture to nails
+                }}
+              />
+            )}
+
+            {/* Performance Overlay */}
+            {showSettings && metrics && viewMode === 'camera' && (
+              <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white p-3 rounded-lg text-xs font-mono">
+                <div>FPS: {metrics.fps}</div>
+                <div>Memory: {metrics.memoryUsage}MB</div>
+                <div>Nails: {metrics.nailsDetected}</div>
+              </div>
             )}
           </div>
         </div>
 
         {/* Bottom Info Panel */}
-        {!isCustomMode && (
+        {selectedDesign && viewMode !== 'upload' && (
           <div className="bg-white border-t border-gray-200 p-6">
             <div className="max-w-4xl mx-auto">
               <div className="grid md:grid-cols-3 gap-6">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">${selectedDesign.price}</div>
-                  <div className="text-gray-600">Average Price</div>
+                  <div className="text-2xl font-bold text-gray-900">${selectedDesign.basePrice}</div>
+                  <div className="text-gray-600">Price</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{selectedDesign.duration}min</div>
+                  <div className="text-2xl font-bold text-gray-900">{selectedDesign.estimatedTime}min</div>
                   <div className="text-gray-600">Duration</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">4.8★</div>
-                  <div className="text-gray-600">Rating</div>
+                  <div className="text-2xl font-bold text-gray-900 capitalize">{selectedDesign.difficulty}</div>
+                  <div className="text-gray-600">Difficulty</div>
                 </div>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Booking Modal */}
+      <BookingModal
+        isOpen={bookingModalOpen}
+        onClose={() => setBookingModalOpen(false)}
+        selectedLook={selectedBookingLook}
+      />
 
       {/* Settings Panel */}
       <AnimatePresence>
@@ -537,34 +536,37 @@ export default function TryOnPage() {
                   onClick={() => setShowSettings(false)}
                   className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200"
                 >
-                  <Eye className="h-5 w-5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
               
-              {/* Settings content would go here */}
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Lighting
+                    Performance Monitoring
                   </label>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="100" 
-                    defaultValue="50"
-                    className="w-full"
-                  />
+                  <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                    <div className="flex justify-between mb-1">
+                      <span>FPS:</span>
+                      <span className="font-mono">{metrics?.fps || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Memory:</span>
+                      <span className="font-mono">{metrics?.memoryUsage || 0}MB</span>
+                    </div>
+                  </div>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Model Quality
+                    Debug Mode
                   </label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2">
-                    <option>High</option>
-                    <option>Medium</option>
-                    <option>Low</option>
-                  </select>
+                  <button
+                    onClick={resetPerformance}
+                    className="w-full py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm"
+                  >
+                    Reset Metrics
+                  </button>
                 </div>
               </div>
             </div>

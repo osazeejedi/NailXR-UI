@@ -226,7 +226,7 @@ export default function SalonDashboard() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as 'overview' | 'bookings' | 'clients' | 'analytics' | 'settings')}
                   className={`flex items-center gap-2 py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === tab.id
                       ? 'border-pink-500 text-pink-600'
@@ -348,7 +348,7 @@ export default function SalonDashboard() {
               <div className="flex gap-4">
                 <select
                   value={bookingFilter}
-                  onChange={(e) => setBookingFilter(e.target.value as any)}
+                  onChange={(e) => setBookingFilter(e.target.value as 'all' | 'today' | 'upcoming' | 'completed')}
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent"
                 >
                   <option value="all">All Bookings</option>

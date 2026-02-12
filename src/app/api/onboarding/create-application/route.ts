@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { OnboardingService } from '@/lib/onboarding'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { SubdomainManager } from '@/lib/subdomain'
 
 /**
@@ -49,10 +49,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create the application
-    const applicationId = await OnboardingService.createApplication(email, businessName)
+    // Create the application using admin client
+    const { data, error } = await supabaseAdmin
+      .from('onboarding_applications')
+      .insert({
+        email,
+        business_name: businessName,
+        subdomain: normalizedSubdomain,
+        status: 'pending',
+        step_completed: 0,
+        form_data: {}
+      })
+      .select('id')
+      .single()
 
-    if (!applicationId) {
+    if (error || !data) {
+      console.error('Error creating application:', error)
       return NextResponse.json(
         {
           success: false,
@@ -61,6 +73,8 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+
+    const applicationId = data.id
 
     // Reserve the subdomain
     const reserved = await SubdomainManager.reserveSubdomain(normalizedSubdomain, email)

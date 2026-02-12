@@ -3,7 +3,15 @@
  * Handles subdomain availability checking, validation, and suggestions
  */
 
-import supabase from '@/lib/supabase-client'
+// Only import admin client if we're on the server side
+const getSupabaseClient = async () => {
+  if (typeof window === 'undefined') {
+    // Server side - use admin client
+    const { supabaseAdmin } = await import('@/lib/supabase-admin')
+    return supabaseAdmin
+  }
+  throw new Error('Client-side database operations should use API routes')
+}
 
 export interface SubdomainCheckResult {
   available: boolean
@@ -99,7 +107,38 @@ export class SubdomainManager {
       }
     }
 
+    // On client side, use API route
+    if (typeof window !== 'undefined') {
+      try {
+        const response = await fetch('/api/onboarding/check-subdomain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subdomain })
+        })
+        const result = await response.json()
+        
+        if (result.success) {
+          return result.data
+        } else {
+          return result.data || {
+            available: false,
+            subdomain,
+            error: 'Failed to check availability'
+          }
+        }
+      } catch (error) {
+        return {
+          available: false,
+          subdomain,
+          error: 'Unable to check availability. Please try again.'
+        }
+      }
+    }
+
+    // On server side, use direct database access
     try {
+      const supabase = await getSupabaseClient()
+      
       // Check in tenants table
       const { data: existingTenant } = await supabase
         .from('tenants')
@@ -175,9 +214,11 @@ export class SubdomainManager {
 
   /**
    * Reserve a subdomain temporarily (24 hour hold)
+   * Server-side only function
    */
   static async reserveSubdomain(subdomain: string, email: string): Promise<boolean> {
     try {
+      const supabase = await getSupabaseClient()
       const expiresAt = new Date()
       expiresAt.setHours(expiresAt.getHours() + 24) // 24 hour reservation
 
@@ -199,9 +240,11 @@ export class SubdomainManager {
 
   /**
    * Release a subdomain reservation
+   * Server-side only function
    */
   static async releaseSubdomain(subdomain: string): Promise<void> {
     try {
+      const supabase = await getSupabaseClient()
       await supabase
         .from('subdomain_reservations')
         .update({ status: 'released' })

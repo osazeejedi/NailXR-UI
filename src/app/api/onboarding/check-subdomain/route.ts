@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { SubdomainManager } from '@/lib/subdomain'
 
 /**
@@ -24,26 +25,76 @@ export async function POST(request: NextRequest) {
     // Normalize the subdomain
     const normalizedSubdomain = SubdomainManager.normalize(subdomain)
 
-    // Check availability
-    const result = await SubdomainManager.checkAvailability(normalizedSubdomain)
-
-    if (result.available) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          available: true,
-          subdomain: result.subdomain,
-          fullUrl: SubdomainManager.getFullUrl(result.subdomain)
-        }
-      })
-    } else {
+    // Check if reserved
+    if (SubdomainManager.isReserved(normalizedSubdomain)) {
       return NextResponse.json({
         success: false,
         data: {
           available: false,
-          subdomain: result.subdomain,
-          error: result.error,
-          suggestions: result.suggestions || []
+          subdomain: normalizedSubdomain,
+          error: 'This subdomain is reserved for system use'
+        }
+      })
+    }
+
+    try {
+      // Check in tenants table
+      const { data: existingTenant } = await supabaseAdmin
+        .from('tenants')
+        .select('subdomain')
+        .eq('subdomain', normalizedSubdomain)
+        .single()
+
+      if (existingTenant) {
+        return NextResponse.json({
+          success: false,
+          data: {
+            available: false,
+            subdomain: normalizedSubdomain,
+            error: 'This subdomain is already taken',
+            suggestions: SubdomainManager.generateSuggestions(normalizedSubdomain)
+          }
+        })
+      }
+
+      // Check in subdomain reservations table
+      const { data: reservation } = await supabaseAdmin
+        .from('subdomain_reservations')
+        .select('*')
+        .eq('subdomain', normalizedSubdomain)
+        .eq('status', 'reserved')
+        .gt('expires_at', new Date().toISOString())
+        .single()
+
+      if (reservation) {
+        return NextResponse.json({
+          success: false,
+          data: {
+            available: false,
+            subdomain: normalizedSubdomain,
+            error: 'This subdomain is temporarily reserved',
+            suggestions: SubdomainManager.generateSuggestions(normalizedSubdomain)
+          }
+        })
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          available: true,
+          subdomain: normalizedSubdomain,
+          fullUrl: SubdomainManager.getFullUrl(normalizedSubdomain)
+        }
+      })
+
+    } catch (error) {
+      console.error('Error checking subdomain availability:', error)
+      return NextResponse.json({
+        success: false,
+        data: {
+          available: false,
+          subdomain: normalizedSubdomain,
+          error: 'Unable to check availability. Please try again.'
         }
       })
     }

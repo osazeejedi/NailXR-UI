@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
 /**
  * Handle subscription created event
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleSubscriptionCreated(subscription: any) {
   console.log('Processing subscription.created:', subscription.id)
 
@@ -117,6 +118,7 @@ async function handleSubscriptionCreated(subscription: any) {
 /**
  * Handle subscription updated event
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleSubscriptionUpdated(subscription: any) {
   console.log('Processing subscription.updated:', subscription.id)
 
@@ -160,6 +162,7 @@ async function handleSubscriptionUpdated(subscription: any) {
 /**
  * Handle subscription deleted event
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleSubscriptionDeleted(subscription: any) {
   console.log('Processing subscription.deleted:', subscription.id)
 
@@ -196,6 +199,7 @@ async function handleSubscriptionDeleted(subscription: any) {
 /**
  * Handle trial will end event (3 days before)
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handleTrialWillEnd(subscription: any) {
   console.log('Processing subscription.trial_will_end:', subscription.id)
 
@@ -226,7 +230,8 @@ async function handleTrialWillEnd(subscription: any) {
             tenant_id: payment.tenant_id,
             notification_type: 'trial_ending',
             status: 'pending',
-            email_to: tenant.config.content.supportEmail,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            email_to: (tenant.config as any)?.content?.supportEmail,
             subject: 'Your trial ends soon',
             metadata: {
               trial_end_date: trialEnd.toISOString(),
@@ -247,6 +252,7 @@ async function handleTrialWillEnd(subscription: any) {
 /**
  * Handle successful payment
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handlePaymentSucceeded(invoice: any) {
   console.log('Processing invoice.payment_succeeded:', invoice.id)
 
@@ -303,6 +309,7 @@ async function handlePaymentSucceeded(invoice: any) {
 /**
  * Handle failed payment
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function handlePaymentFailed(invoice: any) {
   console.log('Processing invoice.payment_failed:', invoice.id)
 

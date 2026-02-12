@@ -13,7 +13,10 @@ export interface OnboardingApplicationData {
   contactName: string
   email: string
   phone?: string
-  businessType: 'salon' | 'spa' | 'beauty_supply' | 'other'
+  whatsappPhone?: string
+  businessType: 'nail_salon' | 'home_service' | 'nail_salon_and_home' | 'spa' | 'other'
+  state?: string
+  area?: string
   description?: string
   
   // Step 2: Branding
@@ -33,8 +36,8 @@ export interface OnboardingApplicationData {
   billingCycle: 'monthly' | 'annual'
   
   // Step 5: Payment (optional during trial)
-  stripeCustomerId?: string
-  stripeSubscriptionId?: string
+  paystackCustomerCode?: string
+  paystackSubscriptionCode?: string
 }
 
 export interface OnboardingApplication {
@@ -188,15 +191,36 @@ export class OnboardingService {
           virtualTryOn: true,
           savedLooks: true,
           salonBooking: true,
+          homeVisits: true,
           analytics: formData.selectedTier !== 'starter',
-          customDomain: false // Subdomain only for now
+          customDomain: false
+        },
+        whatsapp: {
+          enabled: !!formData.whatsappPhone,
+          phoneNumber: formData.whatsappPhone || '',
+          chatLinkMessage: `Hi! I found you on NailXR and I'd like to book an appointment.`,
+          bookingConfirmations: true,
+          appointmentReminders: true
+        },
+        serviceType: formData.businessType === 'home_service' ? 'home_only'
+          : formData.businessType === 'nail_salon_and_home' ? 'both'
+          : 'salon_only',
+        location: {
+          state: formData.state || 'Lagos',
+          area: formData.area || '',
+          address: '',
+          homeVisitAreas: [],
+          homeVisitFee: 0
         },
         pricing: this.getPricingForTier(formData.selectedTier),
+        social: {},
         settings: {
           allowCustomColors: formData.selectedTier !== 'starter',
           maxSavedLooks: this.getMaxSavedLooks(formData.selectedTier),
           enableNotifications: true,
-          timezone: 'UTC'
+          timezone: 'Africa/Lagos',
+          currency: 'NGN',
+          locale: 'en-NG'
         },
         isActive: true
       }
@@ -372,20 +396,20 @@ export class OnboardingService {
     const pricing = {
       starter: {
         commissionRate: 12.0,
-        setupFee: 199,
-        monthlyFee: 49,
+        setupFee: 25000, // ₦25,000
+        monthlyFee: 15000, // ₦15,000
         tier: 'starter' as const
       },
       professional: {
         commissionRate: 8.5,
-        setupFee: 499,
-        monthlyFee: 99,
+        setupFee: 50000, // ₦50,000
+        monthlyFee: 35000, // ₦35,000
         tier: 'professional' as const
       },
       enterprise: {
         commissionRate: 5.0,
-        setupFee: 999,
-        monthlyFee: 199,
+        setupFee: 100000, // ₦100,000
+        monthlyFee: 75000, // ₦75,000
         tier: 'enterprise' as const
       }
     }

@@ -1,10 +1,11 @@
 /**
  * Payment Processing Service
- * Handles Stripe integration for subscriptions and one-time payments
+ * Handles Paystack integration for subscriptions and one-time payments
+ * Optimized for Nigerian market (NGN currency)
  */
 
-export interface StripeConfig {
-  publishableKey: string
+export interface PaystackConfig {
+  publicKey: string
   secretKey: string
   webhookSecret: string
 }
@@ -13,71 +14,78 @@ export interface SubscriptionPlan {
   id: string
   name: string
   tier: 'starter' | 'professional' | 'enterprise'
-  setupFee: number
-  monthlyFee: number
-  annualFee: number
+  setupFee: number // in NGN
+  monthlyFee: number // in NGN
+  annualFee: number // in NGN
   trialDays: number
   features: string[]
+  paystackPlanCode?: string // Paystack plan code for recurring billing
 }
 
 export interface PaymentIntent {
   id: string
-  amount: number
+  amount: number // in kobo (NGN smallest unit)
   currency: string
   status: string
-  clientSecret: string
+  accessCode: string // Paystack access code
+  authorizationUrl: string // Paystack checkout URL
+  reference: string
 }
 
 export interface Subscription {
   id: string
-  customerId: string
+  customerCode: string
   status: string
-  currentPeriodEnd: Date
+  nextPaymentDate: Date
   cancelAtPeriodEnd: boolean
   trialEnd?: Date
+  subscriptionCode: string
+  emailToken: string
 }
 
 export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlan> = {
   starter: {
-    id: 'price_starter_monthly',
+    id: 'plan_starter_monthly',
     name: 'Starter',
     tier: 'starter',
-    setupFee: 199,
-    monthlyFee: 49,
-    annualFee: 490, // ~16% discount
+    setupFee: 25000, // ₦25,000
+    monthlyFee: 15000, // ₦15,000
+    annualFee: 150000, // ₦150,000 (~17% discount)
     trialDays: 14,
     features: [
       'Virtual Try-On Technology',
       'Up to 20 Saved Looks',
-      'Salon Booking Integration',
+      'Salon & Home Visit Booking',
+      'WhatsApp Chat Link',
       'Email Support',
       'Subdomain Hosting'
     ]
   },
   professional: {
-    id: 'price_professional_monthly',
+    id: 'plan_professional_monthly',
     name: 'Professional',
     tier: 'professional',
-    setupFee: 499,
-    monthlyFee: 99,
-    annualFee: 990, // ~16% discount
+    setupFee: 50000, // ₦50,000
+    monthlyFee: 35000, // ₦35,000
+    annualFee: 350000, // ₦350,000 (~17% discount)
     trialDays: 14,
     features: [
       'Everything in Starter',
       'Up to 50 Saved Looks',
-      'Custom Branding Colors',
+      'Custom Branding & Colors',
       'Analytics Dashboard',
-      'Priority Email Support',
-      'Advanced Color Customization'
+      'WhatsApp Business Integration',
+      'Priority Support',
+      'Multiple Technician Profiles'
     ]
   },
   enterprise: {
-    id: 'price_enterprise_monthly',
+    id: 'plan_enterprise_monthly',
     name: 'Enterprise',
     tier: 'enterprise',
-    setupFee: 999,
-    monthlyFee: 199,
-    annualFee: 1990, // ~16% discount
+    setupFee: 100000, // ₦100,000
+    monthlyFee: 75000, // ₦75,000
+    annualFee: 750000, // ₦750,000 (~17% discount)
     trialDays: 14,
     features: [
       'Everything in Professional',
@@ -86,6 +94,7 @@ export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlan> = {
       'API Access',
       'Dedicated Account Manager',
       'White-glove Onboarding',
+      'Multiple Branches Support',
       'Priority Phone & Chat Support'
     ]
   }
@@ -93,22 +102,22 @@ export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlan> = {
 
 export class PaymentService {
   /**
-   * Get Stripe configuration from environment
+   * Get Paystack configuration from environment
    */
-  static getConfig(): StripeConfig {
+  static getConfig(): PaystackConfig {
     return {
-      publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
-      secretKey: process.env.STRIPE_SECRET_KEY || '',
-      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || ''
+      publicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || '',
+      secretKey: process.env.PAYSTACK_SECRET_KEY || '',
+      webhookSecret: process.env.PAYSTACK_WEBHOOK_SECRET || ''
     }
   }
 
   /**
-   * Validate Stripe configuration
+   * Validate Paystack configuration
    */
   static isConfigured(): boolean {
     const config = this.getConfig()
-    return !!(config.publishableKey && config.secretKey)
+    return !!(config.publicKey && config.secretKey)
   }
 
   /**
@@ -144,15 +153,29 @@ export class PaymentService {
   }
 
   /**
-   * Format price for display
+   * Format price for display in Naira
    */
   static formatPrice(amount: number): string {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-NG', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'NGN',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount)
+  }
+
+  /**
+   * Convert NGN to kobo (Paystack uses kobo)
+   */
+  static toKobo(amount: number): number {
+    return Math.round(amount * 100)
+  }
+
+  /**
+   * Convert kobo to NGN
+   */
+  static fromKobo(amountInKobo: number): number {
+    return amountInKobo / 100
   }
 
   /**
@@ -191,8 +214,9 @@ export class PaymentService {
       trialing: 'blue',
       past_due: 'yellow',
       canceled: 'red',
-      unpaid: 'red',
-      incomplete: 'gray'
+      'non-renewing': 'yellow',
+      attention: 'orange',
+      completed: 'gray'
     }
     return colors[status] || 'gray'
   }
@@ -205,70 +229,44 @@ export class PaymentService {
       active: 'Active',
       trialing: 'Trial',
       past_due: 'Payment Due',
-      canceled: 'Canceled',
-      unpaid: 'Unpaid',
-      incomplete: 'Incomplete'
+      canceled: 'Cancelled',
+      'non-renewing': 'Cancelling',
+      attention: 'Needs Attention',
+      completed: 'Completed'
     }
     return labels[status] || status
   }
 
   /**
-   * Validate payment method details (basic client-side validation)
+   * Validate Nigerian phone number
    */
-  static validateCardNumber(cardNumber: string): boolean {
-    // Remove spaces and check length
-    const cleaned = cardNumber.replace(/\s/g, '')
-    return /^\d{13,19}$/.test(cleaned)
+  static validateNigerianPhone(phone: string): boolean {
+    // Nigerian phone: +234XXXXXXXXXX or 0XXXXXXXXXX
+    const cleaned = phone.replace(/[\s\-\(\)]/g, '')
+    return /^(\+234|234|0)[789]\d{9}$/.test(cleaned)
   }
 
   /**
-   * Validate expiry date (MM/YY format)
+   * Format Nigerian phone number
    */
-  static validateExpiryDate(expiry: string): boolean {
-    const match = expiry.match(/^(\d{2})\/(\d{2})$/)
-    if (!match) return false
-
-    const month = parseInt(match[1])
-    const year = parseInt('20' + match[2])
-    
-    if (month < 1 || month > 12) return false
-
-    const now = new Date()
-    const expiryDate = new Date(year, month - 1)
-    
-    return expiryDate > now
-  }
-
-  /**
-   * Validate CVV
-   */
-  static validateCVV(cvv: string): boolean {
-    return /^\d{3,4}$/.test(cvv)
-  }
-
-  /**
-   * Format card number for display (mask with *)
-   */
-  static formatCardNumber(cardNumber: string, maskAll: boolean = false): string {
-    const cleaned = cardNumber.replace(/\s/g, '')
-    if (maskAll) {
-      return '**** **** **** ' + cleaned.slice(-4)
+  static formatNigerianPhone(phone: string): string {
+    const cleaned = phone.replace(/[\s\-\(\)]/g, '')
+    if (cleaned.startsWith('0')) {
+      return '+234' + cleaned.substring(1)
     }
-    return cleaned.replace(/(\d{4})/g, '$1 ').trim()
+    if (cleaned.startsWith('234')) {
+      return '+' + cleaned
+    }
+    return cleaned
   }
 
   /**
-   * Get card brand from number
+   * Generate WhatsApp chat link
    */
-  static getCardBrand(cardNumber: string): string {
-    const cleaned = cardNumber.replace(/\s/g, '')
-    
-    if (/^4/.test(cleaned)) return 'Visa'
-    if (/^5[1-5]/.test(cleaned)) return 'Mastercard'
-    if (/^3[47]/.test(cleaned)) return 'American Express'
-    if (/^6(?:011|5)/.test(cleaned)) return 'Discover'
-    
-    return 'Unknown'
+  static generateWhatsAppLink(phone: string, message?: string): string {
+    const formattedPhone = this.formatNigerianPhone(phone).replace('+', '')
+    const encodedMessage = message ? `?text=${encodeURIComponent(message)}` : ''
+    return `https://wa.me/${formattedPhone}${encodedMessage}`
   }
 
   /**
@@ -290,12 +288,12 @@ export class PaymentService {
   /**
    * Get next billing date
    */
-  static getNextBillingDate(currentPeriodEnd: Date): string {
-    return new Intl.DateTimeFormat('en-US', {
+  static getNextBillingDate(nextPaymentDate: Date): string {
+    return new Intl.DateTimeFormat('en-NG', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
-    }).format(currentPeriodEnd)
+    }).format(nextPaymentDate)
   }
 
   /**
@@ -311,59 +309,65 @@ export class PaymentService {
     const newAmount = (newPlanAmount / totalDays) * daysRemaining
     return Math.max(0, newAmount - unusedAmount)
   }
+
+  /**
+   * Get supported payment channels for Paystack
+   */
+  static getSupportedChannels(): string[] {
+    return ['card', 'bank', 'ussd', 'bank_transfer', 'mobile_money']
+  }
 }
 
 /**
- * Helper functions for Stripe webhook handling
+ * Helper functions for Paystack webhook handling
  */
 export class WebhookHandler {
   /**
-   * Verify webhook signature (to be used in API routes)
+   * Verify Paystack webhook signature
    */
   static verifySignature(payload: string, signature: string, secret: string): boolean {
-    // This is a placeholder - actual verification would use Stripe's library
-    // In the API route, you'd use: stripe.webhooks.constructEvent()
-    return true
+    // In the API route, you'd use crypto.createHmac('sha512', secret).update(payload).digest('hex')
+    // Then compare with the x-paystack-signature header
+    return true // Placeholder — actual impl in API route
   }
 
   /**
    * Handle subscription created event
    */
-  static async handleSubscriptionCreated(subscription: any): Promise<void> {
-    console.log('Subscription created:', subscription.id)
+  static async handleSubscriptionCreated(data: any): Promise<void> {
+    console.log('Paystack subscription created:', data.subscription_code)
     // Update database with subscription details
   }
 
   /**
-   * Handle subscription updated event
+   * Handle charge success event (payment completed)
    */
-  static async handleSubscriptionUpdated(subscription: any): Promise<void> {
-    console.log('Subscription updated:', subscription.id)
-    // Update database with new subscription status
+  static async handleChargeSuccess(data: any): Promise<void> {
+    console.log('Paystack charge success:', data.reference)
+    // Update payment records, activate subscription
   }
 
   /**
-   * Handle subscription deleted event
+   * Handle subscription disabled/cancelled
    */
-  static async handleSubscriptionDeleted(subscription: any): Promise<void> {
-    console.log('Subscription deleted:', subscription.id)
+  static async handleSubscriptionDisabled(data: any): Promise<void> {
+    console.log('Paystack subscription disabled:', data.subscription_code)
     // Mark tenant as inactive or suspended
   }
 
   /**
-   * Handle payment succeeded event
+   * Handle invoice payment failed
    */
-  static async handlePaymentSucceeded(invoice: any): Promise<void> {
-    console.log('Payment succeeded:', invoice.id)
-    // Update payment records
+  static async handleInvoiceFailed(data: any): Promise<void> {
+    console.log('Paystack invoice failed:', data.reference)
+    // Send notification to tenant via WhatsApp/email
   }
 
   /**
-   * Handle payment failed event
+   * Handle transfer success (payouts to salons)
    */
-  static async handlePaymentFailed(invoice: any): Promise<void> {
-    console.log('Payment failed:', invoice.id)
-    // Send notification to tenant
-    // Update tenant status
+  static async handleTransferSuccess(data: any): Promise<void> {
+    console.log('Paystack transfer success:', data.reference)
+    // Update payout records
   }
 }

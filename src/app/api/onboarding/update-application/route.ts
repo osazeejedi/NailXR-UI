@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { OnboardingService, OnboardingApplicationData } from '@/lib/onboarding'
+import { supabaseAdmin } from '@/lib/supabase-admin'
+import { OnboardingApplicationData } from '@/lib/onboarding'
 
 /**
  * PATCH /api/onboarding/update-application
@@ -53,14 +54,18 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Update the application
-    const updated = await OnboardingService.updateApplication(
-      applicationId,
-      step,
-      data as Partial<OnboardingApplicationData>
-    )
+    // Update the application using admin client
+    const { error } = await supabaseAdmin
+      .from('onboarding_applications')
+      .update({
+        step_completed: step,
+        form_data: data,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', applicationId)
 
-    if (!updated) {
+    if (error) {
+      console.error('Error updating application:', error)
       return NextResponse.json(
         {
           success: false,
@@ -110,9 +115,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const application = await OnboardingService.getApplication(applicationId)
+    const { data, error } = await supabaseAdmin
+      .from('onboarding_applications')
+      .select('*')
+      .eq('id', applicationId)
+      .single()
 
-    if (!application) {
+    if (error || !data) {
       return NextResponse.json(
         {
           success: false,
@@ -124,7 +133,17 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: application
+      data: {
+        id: data.id,
+        email: data.email,
+        businessName: data.business_name,
+        subdomain: data.subdomain,
+        status: data.status || 'pending',
+        currentStep: data.step_completed || 0,
+        formData: data.form_data || {},
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      }
     })
 
   } catch (error) {
@@ -142,6 +161,7 @@ export async function GET(request: NextRequest) {
 /**
  * Validate step-specific data
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function validateStepData(step: number, data: any): string | null {
   switch (step) {
     case 1: // Business Info
