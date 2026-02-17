@@ -39,3 +39,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Scraped data & training artifacts
+/data/
+/checkpoints/
+*.pth
+
+# ONNX models (keep only the deployed model)
+
+

@@ -6,7 +6,14 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "scrape": "npx tsx scripts/scraper/run.ts",
+    "scrape:quick": "npx tsx scripts/scraper/run.ts -s NailArt,Nails -m 50",
+    "dataset:build": "npx tsx scripts/dataset/run.ts",
+    "train:synthetic": ".venv/bin/python scripts/training/train.py --synthetic --epochs 50",
+    "train": ".venv/bin/python scripts/training/train.py --dataset ./data/dataset --epochs 100",
+    "export:onnx": ".venv/bin/python scripts/training/export_onnx.py --checkpoint checkpoints/best_model.pth",
+    "pipeline": "npm run scrape && npm run dataset:build && echo 'Dataset ready! Run npm run train next.'"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -39,6 +46,7 @@
     "eslint": "^9",
     "eslint-config-next": "^16.1.6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

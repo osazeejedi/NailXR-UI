@@ -5,6 +5,7 @@
 
 import { ImageProcessor, ImageUtils } from '../preprocessing/ImageProcessor'
 import type { NailRegion } from '../nail-detection/NailDetector'
+import { GlossRenderer, type FinishType, type GlossOptions } from './GlossRenderer'
 
 export interface RenderOptions {
   color: string
@@ -15,6 +16,12 @@ export interface RenderOptions {
   texture?: HTMLImageElement | HTMLCanvasElement
   glow?: boolean
   glowIntensity?: number
+  /** Nail polish finish type for gloss rendering */
+  finish?: FinishType
+  /** Custom gloss options (overrides finish preset) */
+  glossOptions?: Partial<GlossOptions>
+  /** Enable gloss/specular effects. Default: true */
+  enableGloss?: boolean
 }
 
 export interface NailMask {
@@ -28,6 +35,7 @@ export class NailRenderer {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
   private imageProcessor: ImageProcessor
+  private glossRenderer: GlossRenderer
 
   constructor() {
     this.canvas = document.createElement('canvas')
@@ -39,6 +47,7 @@ export class NailRenderer {
     
     this.ctx = ctx
     this.imageProcessor = new ImageProcessor()
+    this.glossRenderer = new GlossRenderer()
   }
 
   /**
@@ -66,6 +75,17 @@ export class NailRenderer {
 
     // Create nail overlay based on pattern
     const overlay = this.createNailOverlay(nailMask, options)
+
+    // Apply gloss/specular effects (enabled by default)
+    if (options.enableGloss !== false) {
+      if (options.finish) this.glossRenderer.setFinish(options.finish)
+      if (options.glossOptions) this.glossRenderer.updateOptions(options.glossOptions)
+      // Estimate scene brightness from source for environment-adaptive gloss
+      const sourceData = this.ctx.getImageData(0, 0, width, height)
+      this.glossRenderer.estimateSceneBrightness(sourceData.data)
+      const glossyData = this.glossRenderer.applyGloss(overlay.data, nailMask.mask, nailMask.width, nailMask.height)
+      overlay.data.set(glossyData)
+    }
 
     // Blend overlay with source
     this.blendOverlay(overlay, nailMask.mask, options.opacity)
@@ -96,9 +116,21 @@ export class NailRenderer {
       this.ctx.drawImage(sourceImage, 0, 0)
     }
 
+    // Setup gloss if enabled
+    if (options.enableGloss !== false) {
+      if (options.finish) this.glossRenderer.setFinish(options.finish)
+      if (options.glossOptions) this.glossRenderer.updateOptions(options.glossOptions)
+      const sourceData = this.ctx.getImageData(0, 0, width, height)
+      this.glossRenderer.estimateSceneBrightness(sourceData.data)
+    }
+
     // Render each nail
     for (const nailMask of nailMasks) {
       const overlay = this.createNailOverlay(nailMask, options)
+      if (options.enableGloss !== false) {
+        const glossyData = this.glossRenderer.applyGloss(overlay.data, nailMask.mask, nailMask.width, nailMask.height)
+        overlay.data.set(glossyData)
+      }
       this.blendOverlay(overlay, nailMask.mask, options.opacity)
     }
 

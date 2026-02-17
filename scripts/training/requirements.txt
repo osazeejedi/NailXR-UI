@@ -1,0 +1,21 @@
+# Core ML
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ONNX export & optimization
+onnx>=1.14.0
+onnxruntime>=1.15.0
+onnxoptimizer>=0.3.0
+
+# Image processing & augmentation
+Pillow>=10.0.0
+numpy>=1.24.0,<2.0.0
+albumentations>=1.3.0
+opencv-python-headless>=4.8.0
+scipy>=1.11.0
+
+# Training utilities
+tqdm>=4.65.0
+matplotlib>=3.7.0
+scikit-learn>=1.3.0
+te

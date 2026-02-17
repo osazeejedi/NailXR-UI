@@ -1,0 +1,33 @@
+{
+  "modelPath": "/models/nail_segmentation.onnx",
+  "inputShape": [
+    1,
+    3,
+    256,
+    256
+  ],
+  "outputShape": [
+    1,
+    1,
+    256,
+    256
+  ],
+  "inputName": "input",
+  "outputName": "output",
+  "imageSize": 256,
+  "fileSizeMB": 0.93,
+  "normalization": {
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "threshold": 0.5,
+  "description": "NailXR Nail Segmentation U-Net - lightweight model for web inference"
+}

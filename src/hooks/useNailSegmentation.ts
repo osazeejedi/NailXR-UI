@@ -8,6 +8,9 @@ import { NailDetector, type NailRegion, type HandLandmark } from '@/ai/nail-dete
 import { NailRenderer, type RenderOptions, type NailMask } from '@/ai/rendering/NailRenderer'
 import { ImageProcessor } from '@/ai/preprocessing/ImageProcessor'
 import { HandStabilizer } from '@/ai/stabilization/HandStabilizer'
+import { AdaptiveMaskStabilizer } from '@/ai/stabilization/MaskStabilizer'
+import { GlossRenderer } from '@/ai/rendering/GlossRenderer'
+import type { FinishType } from '@/ai/rendering/GlossRenderer'
 
 export interface UseNailSegmentationOptions {
   videoElement?: HTMLVideoElement | null
@@ -51,6 +54,8 @@ export function useNailSegmentation(
   const rendererRef = useRef<NailRenderer | null>(null)
   const imageProcessorRef = useRef<ImageProcessor | null>(null)
   const handStabilizerRef = useRef<HandStabilizer | null>(null)
+  const maskStabilizerRef = useRef<AdaptiveMaskStabilizer | null>(null)
+  const glossRendererRef = useRef<GlossRenderer | null>(null)
   const lastRenderTimeRef = useRef<number>(0)
 
   // Initialize AI components
@@ -68,11 +73,14 @@ export function useNailSegmentation(
       measurementNoise: 0.05,
       smoothingFactor: 0.3
     })
+    maskStabilizerRef.current = new AdaptiveMaskStabilizer()
+    glossRendererRef.current = new GlossRenderer({ finish: 'glossy' })
 
     return () => {
       rendererRef.current?.dispose()
       imageProcessorRef.current?.dispose()
       handStabilizerRef.current?.reset()
+      maskStabilizerRef.current?.reset()
     }
   }, [videoElement])
 
@@ -101,8 +109,9 @@ export function useNailSegmentation(
   useEffect(() => {
     if (!handLandmarks || !enableSegmentation || !nailDetectorRef.current) {
       setNailRegions([])
-      // Reset stabilizer when hands are lost
+      // Reset stabilizers when hands are lost
       handStabilizerRef.current?.reset()
+      maskStabilizerRef.current?.reset()
       return
     }
 
